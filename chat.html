@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>chat ♡ sharkkii</title>
+  <meta name="description" content="an AI chatbot on naomi's little corner of the internet.">
+  <meta name="theme-color" content="#efebfc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1329" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="chat ♡ sharkkii">
+  <meta property="og:description" content="an AI chatbot on naomi's little corner of the internet.">
+  <meta property="og:url" content="https://sharkkii.xyz/chat">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/dancing-script-600.woff2" as="font" type="font/woff2" crossorigin>
+  <script>
+    try {
+      var t = localStorage.getItem("theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) {}
+    document.documentElement.classList.add("js");
+  </script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="wide">
+    <div class="theme" role="group" aria-label="color theme">
+      <button type="button" data-theme-set="auto">auto</button>
+      <button type="button" data-theme-set="light">light</button>
+      <button type="button" data-theme-set="dark">dark</button>
+    </div>
+
+    <div class="panel">
+      <a class="back" href="/">← naomi</a>
+      <div class="chat-head">
+        <h1 class="script">Chat<span class="heart">♡</span></h1>
+        <button type="button" class="ghost" id="clear" hidden>new chat</button>
+      </div>
+      <p class="lede small">an AI chatbot (llama 3.3 via groq). it's not naomi, it can be confidently wrong, and this site doesn't save your chats. please don't share personal info.</p>
+
+      <div class="chat-log" id="log" aria-live="polite">
+        <p class="chat-empty" id="empty">ask me anything ♡</p>
+      </div>
+
+      <form class="composer" id="form">
+        <label class="sr-only" for="input">message</label>
+        <textarea id="input" rows="1" maxlength="2000" placeholder="say something…" autocomplete="off"></textarea>
+        <button type="submit" class="send" id="send">send</button>
+      </form>
+      <noscript><p class="quiet">the chat needs javascript turned on.</p></noscript>
+    </div>
+
+    <footer>sharkkii.xyz ✦ inverted glacier</footer>
+  </main>
+  <script src="/theme.js"></script>
+  <script src="/chat.js"></script>
+</body>
+</html>
