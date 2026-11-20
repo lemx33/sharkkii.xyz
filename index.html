@@ -13,6 +13,13 @@
   <meta property="og:type" content="website">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/dancing-script-600.woff2" as="font" type="font/woff2" crossorigin>
+  <script>
+    try {
+      var t = localStorage.getItem("theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) {}
+    document.documentElement.classList.add("js");
+  </script>
   <style>
     /* Dancing Script by The Dancing Script Project Authors, SIL OFL 1.1 (fonts/OFL.txt) */
     @font-face {
@@ -45,8 +52,23 @@
       --shadow-soft: 0 1px 2px rgba(52, 40, 67, .06), 0 12px 40px -12px rgba(95, 73, 117, .25);
       color-scheme: light dark;
     }
+    /* theme: no data-theme = follow the system, otherwise forced */
+    :root[data-theme="light"] { color-scheme: light; }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: var(--ink);
+      --panel: #231a33;
+      --border: #3a2d4c;
+      --fg: var(--frost);
+      --muted: #b9a8cf;
+      --heart: #e0569f;
+      --dot-a: rgba(251, 246, 253, .05);
+      --dot-b: rgba(235, 60, 122, .10);
+      --dot-c: rgba(168, 35, 147, .12);
+      --shadow-soft: 0 1px 2px rgba(0, 0, 0, .3), 0 16px 48px -16px rgba(0, 0, 0, .6);
+    }
     @media (prefers-color-scheme: dark) {
-      :root {
+      :root:not([data-theme="light"]) {
         --bg: var(--ink);
         --panel: #231a33;
         --border: #3a2d4c;
@@ -170,6 +192,37 @@
     .swatches { display: flex; gap: 6px; margin-top: 2.25rem; }
     .swatches span { flex: 1; height: 10px; border-radius: 4px; border: 1px solid var(--border); }
 
+    .theme {
+      display: none;
+      width: fit-content;
+      margin: 0 0 0.75rem auto;
+      padding: 3px;
+      gap: 2px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+      box-shadow: var(--shadow-soft);
+    }
+    .js .theme { display: flex; }
+    .theme button {
+      font: inherit;
+      font-size: 0.8rem;
+      line-height: 1;
+      padding: 0.4rem 0.75rem;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background-color .15s, color .15s;
+    }
+    .theme button:hover { color: var(--fg); }
+    .theme button[aria-pressed="true"] {
+      color: var(--frost);
+      background: linear-gradient(90deg, var(--violet), var(--magenta));
+    }
+    .theme button:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
+
     footer {
       margin-top: 1.5rem;
       text-align: center;
@@ -192,6 +245,12 @@
 </head>
 <body>
   <main>
+    <div class="theme" role="group" aria-label="color theme">
+      <button type="button" data-theme-set="auto">auto</button>
+      <button type="button" data-theme-set="light">light</button>
+      <button type="button" data-theme-set="dark">dark</button>
+    </div>
+
     <div class="panel">
       <div class="top">
         <h1 class="script">Naomi<span class="heart">♡</span></h1>
@@ -248,5 +307,38 @@
 
     <footer>sharkkii.xyz ✦ inverted glacier</footer>
   </main>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var buttons = document.querySelectorAll("[data-theme-set]");
+      var metas = document.querySelectorAll('meta[name="theme-color"]');
+      var colors = { light: "#efebfc", dark: "#1b1329" };
+
+      function apply(mode) {
+        if (mode === "light" || mode === "dark") root.dataset.theme = mode;
+        else { mode = "auto"; delete root.dataset.theme; }
+        buttons.forEach(function (b) {
+          b.setAttribute("aria-pressed", String(b.dataset.themeSet === mode));
+        });
+        metas.forEach(function (m) {
+          var own = m.media.indexOf("dark") !== -1 ? "dark" : "light";
+          m.content = colors[mode === "auto" ? own : mode];
+        });
+        return mode;
+      }
+
+      buttons.forEach(function (b) {
+        b.addEventListener("click", function () {
+          var mode = apply(b.dataset.themeSet);
+          try {
+            if (mode === "auto") localStorage.removeItem("theme");
+            else localStorage.setItem("theme", mode);
+          } catch (e) {}
+        });
+      });
+
+      apply(root.dataset.theme || "auto");
+    })();
+  </script>
 </body>
 </html>
