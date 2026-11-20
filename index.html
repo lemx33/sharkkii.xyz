@@ -520,6 +520,8 @@
           var assets = a.assets || {};
           card.append(art(assetUrl(a.application_id, assets.large_image), assets.large_text || a.name));
           var verb = VERB[a.type] || "";
+          // don't say "playing Playing x" when the app name already has the verb
+          if (verb && a.name && a.name.toLowerCase().indexOf(verb) === 0) verb = "";
           if (a.details) {
             t.append(h("div", "main", a.details));
             if (a.state) t.append(h("div", "sub", a.state));
