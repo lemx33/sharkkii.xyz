@@ -27,7 +27,63 @@ const SYSTEM_PROMPT = [
   "Do not ask visitors for personal information.",
 ].join(" ");
 
+const SEARCH_PROMPT = [
+  "You can search the web with the browser_search tool.",
+  "Use it for anything recent, factual, or that you are unsure about, and base your answer on what you find.",
+  "Mention which websites your information came from.",
+].join(" ");
+
 const hits = new Map();
+
+// Groq streams each browser step ("executed_tools") with the full text of
+// every page it read. Visitors only need the query, the page URL and the
+// result titles/URLs, so shrink those events before forwarding.
+function slimTools(tools) {
+  return tools.map((t) => {
+    let args = {};
+    try { args = JSON.parse((t && t.arguments) || "{}"); } catch {}
+    const url = /^L1: URL: (\S+)/m.exec((t && typeof t.output === "string" && t.output) || "");
+    const results = t && t.search_results && Array.isArray(t.search_results.results) ? t.search_results.results : [];
+    return {
+      index: t && t.index,
+      name: String((t && t.name) || ""),
+      done: !!(t && t.output),
+      query: typeof args.query === "string" ? args.query.slice(0, 200) : undefined,
+      url: url ? url[1] : undefined,
+      results: results.slice(0, 8).map((r) => ({ title: String(r.title || "").slice(0, 200), url: String(r.url || "") })),
+    };
+  });
+}
+
+function slimLine(line) {
+  if (!line.startsWith("data:") || !line.includes("executed_tools")) return line;
+  try {
+    const evt = JSON.parse(line.slice(5));
+    const delta = evt.choices && evt.choices[0] && evt.choices[0].delta;
+    if (delta && Array.isArray(delta.executed_tools)) delta.executed_tools = slimTools(delta.executed_tools);
+    return "data: " + JSON.stringify(evt);
+  } catch {
+    return line;
+  }
+}
+
+function slimStream(body) {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buf = "";
+  return body.pipeThrough(new TransformStream({
+    transform(chunk, ctrl) {
+      buf += decoder.decode(chunk, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) ctrl.enqueue(encoder.encode(slimLine(line) + "\n"));
+    },
+    flush(ctrl) {
+      buf += decoder.decode();
+      if (buf) ctrl.enqueue(encoder.encode(slimLine(buf)));
+    },
+  }));
+}
 
 function corsHeaders(origin) {
   return {
@@ -103,23 +159,42 @@ export default {
       return json(400, { error: `messages must be under ${MAX_CHARS_PER_MESSAGE} characters each` }, origin);
     }
 
-    let upstream;
-    try {
-      upstream = await fetch(GROQ_URL, {
+    const model = env.MODEL || DEFAULT_MODEL;
+    const gptOss = String(model).startsWith("openai/gpt-oss");
+    // Web search is Groq's built-in browser_search tool (gpt-oss models only).
+    const search = body.search === true && gptOss;
+    const today = new Date().toISOString().slice(0, 10);
+
+    function groqRequest(hideReasoning) {
+      return fetch(GROQ_URL, {
         method: "POST",
         headers: { "Authorization": `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: env.MODEL || DEFAULT_MODEL,
-          messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+          model,
+          messages: [
+            { role: "system", content: `${SYSTEM_PROMPT} Today's date is ${today}.${search ? " " + SEARCH_PROMPT : ""}` },
+            ...messages,
+          ],
           max_completion_tokens: MAX_COMPLETION_TOKENS,
           temperature: 0.7,
           stream: true,
-          // gpt-oss models only: think briefly, and don't send the reasoning to visitors
-          ...(String(env.MODEL || DEFAULT_MODEL).startsWith("openai/gpt-oss")
-            ? { reasoning_effort: "low", include_reasoning: false }
-            : {}),
+          // gpt-oss only: think briefly, and keep the reasoning away from visitors
+          ...(gptOss ? { reasoning_effort: "low" } : {}),
+          ...(gptOss && hideReasoning ? { include_reasoning: false } : {}),
+          ...(search ? { tools: [{ type: "browser_search" }] } : {}),
         }),
       });
+    }
+
+    let upstream;
+    try {
+      upstream = await groqRequest(true);
+      // Groq's docs don't say whether browser_search accepts include_reasoning:
+      // if it's rejected, retry once without it.
+      if (search && upstream.status === 400) {
+        console.error("groq 400 with search, retrying without include_reasoning", (await upstream.text().catch(() => "")).slice(0, 300));
+        upstream = await groqRequest(false);
+      }
     } catch {
       return json(502, { error: "couldn't reach the AI right now" }, origin);
     }
@@ -136,7 +211,7 @@ export default {
       return json(502, { error: `the AI had a problem (groq ${upstream.status}), try again` }, origin);
     }
 
-    return new Response(upstream.body, {
+    return new Response(slimStream(upstream.body), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",

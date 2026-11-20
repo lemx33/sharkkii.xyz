@@ -34,9 +34,12 @@
       <a class="back" href="/">← naomi</a>
       <div class="chat-head">
         <h1 class="script">Chat<span class="heart">♡</span></h1>
-        <button type="button" class="ghost" id="clear" hidden>new chat</button>
+        <div class="chat-tools">
+          <button type="button" class="ghost toggle" id="search" aria-pressed="true">web search: on</button>
+          <button type="button" class="ghost" id="clear" hidden>new chat</button>
+        </div>
       </div>
-      <p class="lede small">an AI chatbot (gpt-oss via groq). it's not naomi, it can be confidently wrong, and this site doesn't save your chats. please don't share personal info.</p>
+      <p class="lede small">an AI chatbot (gpt-oss via groq) that can search the web. it's not naomi, it can still be confidently wrong, and this site doesn't save your chats. please don't share personal info.</p>
 
       <div class="chat-log" id="log" aria-live="polite">
         <p class="chat-empty" id="empty">ask me anything ♡</p>
