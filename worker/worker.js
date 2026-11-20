@@ -10,13 +10,13 @@
 // not scripts. Groq's own account limits are the hard ceiling.
 
 const ALLOWED_ORIGINS = ["https://sharkkii.xyz", "https://www.sharkkii.xyz"];
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_MODEL = "openai/gpt-oss-20b";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const MAX_MESSAGES = 20;          // conversation turns kept
 const MAX_CHARS_PER_MESSAGE = 2000;
 const MAX_TOTAL_CHARS = 16000;
-const MAX_COMPLETION_TOKENS = 1024;
+const MAX_COMPLETION_TOKENS = 2048; // gpt-oss reasoning likely counts toward this
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 8;               // requests per IP per window
 
@@ -114,6 +114,10 @@ export default {
           max_completion_tokens: MAX_COMPLETION_TOKENS,
           temperature: 0.7,
           stream: true,
+          // gpt-oss models only: think briefly, and don't send the reasoning to visitors
+          ...(String(env.MODEL || DEFAULT_MODEL).startsWith("openai/gpt-oss")
+            ? { reasoning_effort: "low", include_reasoning: false }
+            : {}),
         }),
       });
     } catch {
@@ -121,9 +125,15 @@ export default {
     }
 
     if (!upstream.ok || !upstream.body) {
-      const status = upstream.status === 429 ? 429 : 502;
-      const msg = upstream.status === 429 ? "the AI is out of breath (rate limit), try again soon" : "the AI had a problem, try again";
-      return json(status, { error: msg }, origin);
+      // Details go to the Worker logs only; visitors just see the status code.
+      console.error("groq error", upstream.status, (await upstream.text().catch(() => "")).slice(0, 500));
+      if (upstream.status === 429) {
+        return json(429, { error: "the AI is out of breath (rate limit), try again soon" }, origin);
+      }
+      if (upstream.status === 401 || upstream.status === 403) {
+        return json(502, { error: `the chat's API key was rejected (groq ${upstream.status})` }, origin);
+      }
+      return json(502, { error: `the AI had a problem (groq ${upstream.status}), try again` }, origin);
     }
 
     return new Response(upstream.body, {

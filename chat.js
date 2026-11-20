@@ -1,7 +1,7 @@
 // AI chat page. Talks to the Cloudflare Worker in worker/worker.js, which
 // holds the Groq API key. Nothing secret lives in this file.
 (function () {
-  var API_URL = "";
+  var API_URL = "https://sharkkii-chat.uwufurry702.workers.dev/";
 
   var log = document.getElementById("log");
   var empty = document.getElementById("empty");
