@@ -19,6 +19,10 @@
       if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
     } catch (e) {}
     document.documentElement.classList.add("js");
+    // arriving via a page-to-page morph: skip the intro animations
+    window.addEventListener("pagereveal", function (e) {
+      if (e.viewTransition) document.documentElement.classList.add("no-intro");
+    });
   </script>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -56,6 +60,7 @@
     <footer>sharkkii.xyz ✦ inverted glacier</footer>
   </main>
   <script src="/theme.js"></script>
+  <script src="/fx.js"></script>
   <script src="/chat.js"></script>
 </body>
 </html>
