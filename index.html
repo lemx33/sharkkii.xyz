@@ -223,6 +223,55 @@
     }
     .theme button:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
 
+    /* live discord presence (Lanyard) */
+    .now { display: none; }
+    .js .now.ready { display: block; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-weight: 600;
+    }
+    .dot {
+      width: 0.7rem; height: 0.7rem; flex: none;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 3px var(--panel), 0 0 0 4px var(--border);
+    }
+    .dot.online  { background: #3bb57c; }
+    .dot.idle    { background: #f0b232; }
+    .dot.dnd     { background: var(--pink); }
+    .dot.online, .dot.dnd { animation: pulse 2.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 3px var(--panel), 0 0 0 6px var(--border); } }
+    .custom { margin: 0.4rem 0 0; color: var(--muted); font-style: italic; }
+    .custom img { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin-right: 0.3em; }
+    .acts { margin-top: 0.85rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+    .act {
+      display: flex;
+      gap: 0.85rem;
+      align-items: center;
+      padding: 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg);
+    }
+    .act .art {
+      width: 3.4rem; height: 3.4rem; flex: none;
+      border-radius: 10px;
+      object-fit: cover;
+      background: linear-gradient(135deg, var(--violet), var(--pink));
+    }
+    .act .art.blank { display: grid; place-items: center; color: var(--frost); font-size: 1.3rem; }
+    .act .txt { min-width: 0; flex: 1; line-height: 1.4; }
+    .act .main { font-weight: 600; }
+    .act .sub { color: var(--muted); font-size: 0.92rem; }
+    .act .meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.15rem; }
+    .act .main, .act .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar { height: 4px; border-radius: 4px; background: var(--border); margin-top: 0.45rem; overflow: hidden; }
+    .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--violet), var(--pink)); border-radius: 4px; }
+    .quiet { margin: 0.6rem 0 0; color: var(--muted); font-size: 0.92rem; }
+    @media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+
     footer {
       margin-top: 1.5rem;
       text-align: center;
@@ -285,6 +334,14 @@
         </g>
       </svg>
 
+      <section class="now" id="now" aria-live="polite">
+        <h2 class="script">Right now</h2>
+        <div class="status"><span class="dot" id="now-dot"></span><span id="now-status">checking discord…</span></div>
+        <p class="custom" id="now-custom" hidden></p>
+        <div class="acts" id="now-acts"></div>
+        <p class="quiet" id="now-quiet" hidden></p>
+      </section>
+
       <h2 class="script">Things I make</h2>
       <ul class="things">
         <li><span class="what">games</span><span class="desc">game dev and scripting on a few community projects</span></li>
@@ -338,6 +395,214 @@
       });
 
       apply(root.dataset.theme || "auto");
+    })();
+  </script>
+  <script>
+    // Live Discord presence via Lanyard (https://github.com/Phineas/lanyard).
+    // The account must be a member of the Lanyard Discord server.
+    (function () {
+      var DISCORD_ID = "1297634341249224744";
+      var section = document.getElementById("now");
+      if (!/^\d{15,22}$/.test(DISCORD_ID) || !section) return;
+
+      var el = {
+        dot: document.getElementById("now-dot"),
+        status: document.getElementById("now-status"),
+        custom: document.getElementById("now-custom"),
+        acts: document.getElementById("now-acts"),
+        quiet: document.getElementById("now-quiet")
+      };
+      var STATUS = {
+        online: "online on discord",
+        idle: "idle",
+        dnd: "do not disturb",
+        offline: "offline"
+      };
+      var VERB = { 0: "playing", 1: "streaming", 2: "listening to", 3: "watching", 5: "competing in" };
+
+      function h(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
+
+      // Turn a Discord asset key into a safe https image URL, or null.
+      function assetUrl(appId, key) {
+        if (!key || typeof key !== "string") return null;
+        if (key.indexOf("mp:external/") === 0) return "https://media.discordapp.net/external/" + key.slice(12);
+        if (key.indexOf("mp:") === 0) return "https://media.discordapp.net/" + key.slice(3);
+        if (key.indexOf("spotify:") === 0) return "https://i.scdn.co/image/" + key.slice(8);
+        if (/^\d+$/.test(key) && /^\d+$/.test(appId || "")) return "https://cdn.discordapp.com/app-assets/" + appId + "/" + key + ".png";
+        return null;
+      }
+
+      function art(url, alt) {
+        if (!url) { var b = h("div", "art blank", "♥"); b.setAttribute("aria-hidden", "true"); return b; }
+        var img = h("img", "art");
+        img.src = url;
+        img.alt = alt || "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        img.onerror = function () { img.replaceWith(art(null)); };
+        return img;
+      }
+
+      function ago(start) {
+        var m = Math.max(0, Math.floor((Date.now() - start) / 60000));
+        if (m < 1) return "just started";
+        if (m < 60) return "for " + m + " min";
+        var hr = Math.floor(m / 60);
+        return "for " + hr + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+      }
+
+      function tick() {
+        section.querySelectorAll("[data-start]").forEach(function (n) {
+          n.textContent = (n.getAttribute("data-prefix") || "") + ago(+n.getAttribute("data-start"));
+        });
+        section.querySelectorAll("[data-end]").forEach(function (n) {
+          var a = +n.getAttribute("data-from"), b = +n.getAttribute("data-end");
+          var pct = Math.min(100, Math.max(0, (Date.now() - a) / (b - a) * 100));
+          n.style.width = pct + "%";
+        });
+      }
+
+      function render(d) {
+        var st = STATUS[d.discord_status] ? d.discord_status : "offline";
+        el.dot.className = "dot " + st;
+        el.status.textContent = STATUS[st];
+
+        var acts = Array.isArray(d.activities) ? d.activities : [];
+
+        var custom = acts.filter(function (a) { return a.type === 4; })[0];
+        el.custom.replaceChildren();
+        if (custom && (custom.state || custom.emoji)) {
+          if (custom.emoji && custom.emoji.id && /^\d+$/.test(custom.emoji.id)) {
+            var e = h("img");
+            e.src = "https://cdn.discordapp.com/emojis/" + custom.emoji.id + (custom.emoji.animated ? ".gif" : ".webp") + "?size=48";
+            e.alt = custom.emoji.name || "";
+            e.referrerPolicy = "no-referrer";
+            el.custom.append(e);
+          } else if (custom.emoji && custom.emoji.name) {
+            el.custom.append(custom.emoji.name + " ");
+          }
+          if (custom.state) el.custom.append(custom.state);
+          el.custom.hidden = false;
+        } else {
+          el.custom.hidden = true;
+        }
+
+        el.acts.replaceChildren();
+        var shown = 0;
+
+        if (d.listening_to_spotify && d.spotify) {
+          var sp = d.spotify, card = h("div", "act"), t = h("div", "txt");
+          card.append(art(/^https:\/\//.test(sp.album_art_url || "") ? sp.album_art_url : null, sp.album));
+          t.append(h("div", "main", sp.song || "something"));
+          t.append(h("div", "sub", "by " + (sp.artist || "someone").replace(/;/g, ",")));
+          if (sp.timestamps && sp.timestamps.start && sp.timestamps.end) {
+            var bar = h("div", "bar"), fill = h("i");
+            fill.setAttribute("data-from", sp.timestamps.start);
+            fill.setAttribute("data-end", sp.timestamps.end);
+            bar.append(fill);
+            t.append(bar);
+          }
+          t.append(h("div", "meta", "listening on spotify"));
+          card.append(t);
+          el.acts.append(card);
+          shown++;
+        }
+
+        acts.forEach(function (a) {
+          if (a.type === 4) return;
+          if (a.type === 2 && a.name === "Spotify" && d.listening_to_spotify) return;
+          var card = h("div", "act"), t = h("div", "txt");
+          var assets = a.assets || {};
+          card.append(art(assetUrl(a.application_id, assets.large_image), assets.large_text || a.name));
+          var verb = VERB[a.type] || "";
+          if (a.details) {
+            t.append(h("div", "main", a.details));
+            if (a.state) t.append(h("div", "sub", a.state));
+          } else if (a.state) {
+            t.append(h("div", "main", a.state));
+          } else {
+            t.append(h("div", "main", (verb ? verb + " " : "") + a.name));
+          }
+          var meta = h("div", "meta");
+          var label = (a.details || a.state) ? (verb ? verb + " " : "") + a.name : "";
+          if (a.timestamps && a.timestamps.start) {
+            meta.setAttribute("data-prefix", label ? label + " · " : "");
+            meta.setAttribute("data-start", a.timestamps.start);
+          } else {
+            meta.textContent = label;
+          }
+          if (label || meta.hasAttribute("data-start")) t.append(meta);
+          card.append(t);
+          el.acts.append(card);
+          shown++;
+        });
+
+        if (!shown) {
+          el.quiet.textContent = st === "offline"
+            ? "not around right now, probably eeping or touching grass"
+            : "not doing anything in particular rn";
+          el.quiet.hidden = false;
+        } else {
+          el.quiet.hidden = true;
+        }
+
+        section.classList.add("ready");
+        tick();
+      }
+
+      function failed() {
+        el.dot.className = "dot";
+        el.status.textContent = "couldn't reach discord rn";
+        el.acts.replaceChildren();
+        el.custom.hidden = true;
+        el.quiet.hidden = true;
+        section.classList.add("ready");
+      }
+
+      // Hook for local testing.
+      window.__renderPresence = render;
+
+      // first paint over REST, then live updates over the socket
+      fetch("https://api.lanyard.rest/v1/users/" + DISCORD_ID)
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.success && j.data) render(j.data);
+          // not in the Lanyard server (yet): keep the section hidden
+          else if (!(j && j.error && j.error.code === "user_not_monitored")) failed();
+        })
+        .catch(failed);
+
+      var backoff = 3000, beat;
+      function connect() {
+        var ws;
+        try { ws = new WebSocket("wss://api.lanyard.rest/socket"); } catch (e) { return; }
+        ws.onmessage = function (ev) {
+          var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (m.op === 1) {
+            backoff = 3000;
+            ws.send(JSON.stringify({ op: 2, d: { subscribe_to_id: DISCORD_ID } }));
+            clearInterval(beat);
+            beat = setInterval(function () {
+              if (ws.readyState === 1) ws.send(JSON.stringify({ op: 3 }));
+            }, (m.d && m.d.heartbeat_interval) || 30000);
+          } else if (m.op === 0 && (m.t === "INIT_STATE" || m.t === "PRESENCE_UPDATE") && m.d) {
+            // an unmonitored user gets an empty INIT_STATE: ignore it
+            if (m.d.discord_status) render(m.d);
+          }
+        };
+        ws.onclose = function () {
+          clearInterval(beat);
+          setTimeout(connect, backoff);
+          backoff = Math.min(backoff * 2, 60000);
+        };
+      }
+      connect();
+      setInterval(tick, 1000);
     })();
   </script>
 </body>
